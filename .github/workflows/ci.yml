@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install system libs for OpenCV
+        # opencv-python-headless needs libglib2.0 at runtime; installing it here
+        # keeps `import cv2` (used by the baseline + tests) from failing in CI.
+        run: sudo apt-get update && sudo apt-get install -y libglib2.0-0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run test suite
+        # Exercises the real LBP+SVM baseline (trained on the committed synthetic
+        # sample), the ONNX inference path (against a tiny committed fixture
+        # model), and the API's graceful-degradation behavior on a fresh checkout
+        # with no trained artifacts present. No torch required -- the deep model
+        # is served through onnxruntime.
+        run: pytest tests/ -v

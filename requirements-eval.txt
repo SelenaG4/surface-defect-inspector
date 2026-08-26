@@ -1,0 +1,11 @@
+# Extra deps ONLY for scripts/evaluate.py -- the MLflow-tracked baseline-vs-CNN
+# comparison and its charts. Install on top of the base:
+#     pip install -r requirements.txt
+#     pip install -r requirements-eval.txt
+#
+# Note there is still no torch here: evaluate.py runs the deep model through
+# onnxruntime (in the base requirements), so a full local evaluation needs no
+# deep-learning framework at all. torch/torchvision are only needed to *train*
+# the model, which happens in Colab (see notebooks/), where they're preinstalled.
+mlflow==3.15.1
+matplotlib==3.10.9

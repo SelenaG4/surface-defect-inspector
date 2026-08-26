@@ -1,0 +1,16 @@
+# Light, always-needed runtime: the classical LBP+SVM baseline, the ONNX-served
+# deep model, the FastAPI service, and the tests. Notably NO torch -- the deep
+# model is served through onnxruntime, which is why this whole service (deep
+# model included) is light enough to run on a free-tier host.
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+onnxruntime==1.25.0
+scikit-image==0.26.0
+scikit-learn==1.8.0
+opencv-python-headless==4.13.0.92
+joblib==1.5.3
+numpy==2.4.4
+python-multipart==0.0.26
+pytest==8.3.3
+httpx==0.28.1
+

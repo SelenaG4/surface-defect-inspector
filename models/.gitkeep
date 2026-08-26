@@ -1,0 +1,6 @@
+# The two trained artifacts live here, produced by notebooks/finetune_efficientnet_neu.ipynb:
+#   baseline_lbp_svm.joblib  -- the classical LBP+SVM baseline (~35 KB)
+#   model.onnx               -- the fine-tuned EfficientNet, ONNX-exported (~20 MB)
+# Both are small enough to commit, which is what lets the deployed service run
+# BOTH models live. Until they're here, the app degrades gracefully and reports
+# each as not loaded.

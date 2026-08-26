@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Surface Defect Inspector</title>
+<style>
+  :root {
+    --navy: #0f2c4c; --navy2: #163a63; --ink: #1b2733; --muted: #5b6b7b;
+    --line: #dfe6ee; --bg: #f4f7fb; --card: #ffffff; --accent: #2f6fb0;
+    --good: #1f9d6b; --warn: #c8781f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ink); background: var(--bg); line-height: 1.5; }
+  header { background: linear-gradient(135deg, var(--navy), var(--navy2)); color: #fff; padding: 34px 20px; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 0 20px; }
+  header h1 { margin: 0 0 6px; font-size: 26px; }
+  header p { margin: 0; opacity: .9; max-width: 720px; }
+  main { padding: 26px 0 60px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 20px; margin: 18px 0; box-shadow: 0 1px 2px rgba(16,44,76,.04); }
+  h2 { font-size: 18px; margin: 0 0 12px; }
+  .muted { color: var(--muted); }
+  .row { display: flex; gap: 18px; flex-wrap: wrap; }
+  .col { flex: 1 1 260px; }
+  .drop { border: 2px dashed var(--line); border-radius: 10px; padding: 20px; text-align: center;
+    cursor: pointer; transition: border-color .15s; }
+  .drop:hover { border-color: var(--accent); }
+  #preview { max-width: 200px; max-height: 200px; margin-top: 12px; border-radius: 8px; display: none; border: 1px solid var(--line); }
+  button { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 10px 18px;
+    font-size: 15px; cursor: pointer; margin-top: 12px; }
+  button:disabled { opacity: .5; cursor: default; }
+  .result { border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  .result h3 { margin: 0 0 4px; font-size: 15px; }
+  .verdict { font-size: 22px; font-weight: 700; margin: 6px 0; }
+  .conf { color: var(--muted); font-size: 13px; }
+  .bar { height: 8px; background: #eef2f7; border-radius: 5px; overflow: hidden; margin: 3px 0 8px; }
+  .bar > span { display: block; height: 100%; background: var(--accent); }
+  .pillrow { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .pill { background: #eef3f9; color: var(--navy); border-radius: 999px; padding: 3px 10px; font-size: 12px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+  .status { font-size: 13px; padding: 8px 12px; border-radius: 8px; margin-top: 8px; }
+  .status.on { background: #e8f6ef; color: var(--good); }
+  .status.off { background: #fdf1e3; color: var(--warn); }
+  code { background: #eef2f7; padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>Surface Defect Inspector</h1>
+    <p>Automated visual quality inspection for metal-surface manufacturing — a classical texture
+       baseline (LBP + SVM) measured head-to-head against a fine-tuned EfficientNet, on the NEU
+       steel-surface defect benchmark. Six defect types: crazing, inclusion, patches, pitted
+       surface, rolled-in scale, scratches.</p>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="card">
+    <h2>Try it</h2>
+    <p class="muted">Upload a grayscale surface image and see both models classify the defect type.
+       (A few sample images ship in <code>data/sample/</code>.)</p>
+    <div class="row">
+      <div class="col">
+        <label class="drop" for="file">
+          <div>📷 Click to choose an image</div>
+          <img id="preview" alt="preview" />
+        </label>
+        <input id="file" type="file" accept="image/*" hidden />
+        <br /><button id="go" disabled>Classify</button>
+      </div>
+      <div class="col">
+        <div id="results"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Measured baseline (LBP + SVM)</h2>
+    <p class="muted" id="metrics-note">Loading measured metrics…</p>
+    <table id="metrics" style="display:none">
+      <thead><tr><th>Defect type</th><th>F1 (baseline)</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div id="model-status"></div>
+  </div>
+</main>
+
+<script>
+  const $ = (s) => document.querySelector(s);
+  let chosen = null;
+
+  $("#file").addEventListener("change", (e) => {
+    chosen = e.target.files[0] || null;
+    const img = $("#preview");
+    if (chosen) { img.src = URL.createObjectURL(chosen); img.style.display = "inline-block"; $("#go").disabled = false; }
+  });
+
+  function panel(title, pred) {
+    if (!pred) return `<div class="result"><h3>${title}</h3><div class="conf">Not loaded — running in baseline-only mode.</div></div>`;
+    const probs = Object.entries(pred.probabilities).sort((a,b)=>b[1]-a[1]);
+    const bars = probs.map(([k,v]) =>
+      `<div style="font-size:12px">${k} <span class="conf">${(v*100).toFixed(1)}%</span></div>
+       <div class="bar"><span style="width:${(v*100).toFixed(1)}%"></span></div>`).join("");
+    return `<div class="result"><h3>${title}</h3>
+      <div class="verdict">${pred.label}</div>
+      <div class="conf">confidence ${(pred.confidence*100).toFixed(1)}%</div>
+      <div style="margin-top:10px">${bars}</div></div>`;
+  }
+
+  $("#go").addEventListener("click", async () => {
+    if (!chosen) return;
+    $("#go").disabled = true; $("#results").innerHTML = '<p class="muted">Classifying…</p>';
+    const fd = new FormData(); fd.append("file", chosen);
+    try {
+      const r = await fetch("/predict", { method: "POST", body: fd });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const d = await r.json();
+      $("#results").innerHTML =
+        panel("Baseline (LBP + SVM)", d.baseline) +
+        '<div style="height:12px"></div>' +
+        panel("Fine-tuned EfficientNet", d.deep);
+    } catch (err) {
+      $("#results").innerHTML = `<p class="status off">Error: ${err.message}</p>`;
+    }
+    $("#go").disabled = false;
+  });
+
+  (async () => {
+    try {
+      const h = await (await fetch("/health")).json();
+      const ms = $("#model-status");
+      ms.innerHTML =
+        `<div class="status ${h.baseline_loaded?'on':'off'}">Baseline: ${h.baseline_loaded?'loaded':'not loaded'}</div>` +
+        `<div class="status ${h.deep_loaded?'on':'off'}">EfficientNet: ${h.deep_loaded?'loaded (served live via ONNX)':'not loaded — '+(h.deep_status||'')}</div>`;
+      if (h.baseline_loaded) {
+        const m = await (await fetch("/baseline/metrics")).json();
+        $("#metrics-note").innerHTML = `Accuracy <b>${(m.accuracy*100).toFixed(1)}%</b> · macro F1 <b>${m.macro_f1.toFixed(3)}</b> · evaluated on ${m.n_test} held-out images.`;
+        const tb = $("#metrics tbody");
+        m.class_order.forEach((c,i) => {
+          tb.innerHTML += `<tr><td>${c}</td><td>${m.per_class_f1[c].toFixed(3)}</td></tr>`;
+        });
+        $("#metrics").style.display = "table";
+      } else {
+        $("#metrics-note").textContent = "Baseline not loaded yet — train it with scripts/train_baseline.py.";
+      }
+    } catch (e) { /* leave the loading note */ }
+  })();
+</script>
+</body>
+</html>
