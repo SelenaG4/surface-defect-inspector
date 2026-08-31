@@ -6,8 +6,16 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Telemetry is opt-in at build time. The platform's CD pipeline builds with
+# WITH_TELEMETRY=true for Azure; Render and local builds stay light and the
+# service no-ops its tracing. See requirements-telemetry.txt.
+ARG WITH_TELEMETRY=false
+
+COPY requirements.txt requirements-telemetry.txt ./
+RUN pip install --no-cache-dir -r requirements.txt \
+    && if [ "$WITH_TELEMETRY" = "true" ]; then \
+         pip install --no-cache-dir -r requirements-telemetry.txt; \
+       fi
 
 COPY app ./app
 COPY models ./models

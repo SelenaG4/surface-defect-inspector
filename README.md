@@ -159,10 +159,10 @@ in the build sandbox, which has no Docker daemon.)
 
 ### Live demo
 
-Deployed on Render's free tier: **[link added once deployed]**. Because the deep model is served via
-ONNX (not PyTorch), **both** models run live here — upload a surface image and see the classical and
-the fine-tuned CNN predictions side by side. The free tier spins down after 15 min idle, so the
-first request after a lull takes ~30–50s to wake.
+Deployed on Render's free tier: **https://surface-defect-inspector.onrender.com/**. Because the deep
+model is served via ONNX (not PyTorch), **both** models run live here — upload a surface image and see
+the classical and the fine-tuned CNN predictions side by side. The free tier spins down after 15 min
+idle, so the first request after a lull takes ~30–50s to wake.
 
 ## What I'd do next
 

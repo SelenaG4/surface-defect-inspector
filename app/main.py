@@ -10,6 +10,7 @@ crashing, when an artifact hasn't been produced yet.
 """
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import cv2
@@ -18,14 +19,37 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from app import baseline
+from app import baseline, telemetry
 from app.deep_model import DeepDefectClassifier
 from app.labels import CLASS_NAMES, DISPLAY_NAMES
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 BASELINE_PATH = Path(__file__).resolve().parent.parent / "models" / "baseline_lbp_svm.joblib"
 
+_baseline: baseline.BaselineResult | None = None
+_baseline_error: str | None = None
+_deep: DeepDefectClassifier | None = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Load both models and configure tracing before serving traffic.
+
+    Replaces the deprecated @app.on_event("startup") hook.
+    """
+    global _baseline, _baseline_error, _deep
+    try:
+        _baseline = baseline.load_baseline(BASELINE_PATH)
+    except Exception as exc:  # noqa: BLE001 -- degrade gracefully if the artifact is absent
+        _baseline = None
+        _baseline_error = str(exc)
+    _deep = DeepDefectClassifier()
+    telemetry.setup_telemetry(app)
+    yield
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title="Surface Defect Inspector",
     description=(
         "Classical LBP+SVM texture baseline vs. a fine-tuned EfficientNet on the NEU "
@@ -35,21 +59,6 @@ app = FastAPI(
 )
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-
-_baseline: baseline.BaselineResult | None = None
-_baseline_error: str | None = None
-_deep: DeepDefectClassifier | None = None
-
-
-@app.on_event("startup")
-def _startup() -> None:
-    global _baseline, _baseline_error, _deep
-    try:
-        _baseline = baseline.load_baseline(BASELINE_PATH)
-    except Exception as exc:  # noqa: BLE001 -- degrade gracefully if the artifact is absent
-        _baseline = None
-        _baseline_error = str(exc)
-    _deep = DeepDefectClassifier()
 
 
 def _read_upload_to_gray(data: bytes) -> np.ndarray:
@@ -106,10 +115,35 @@ async def predict(file: UploadFile = File(...)) -> dict:
         raise HTTPException(status_code=503, detail=_baseline_error or "Baseline not loaded")
     gray = _read_upload_to_gray(await file.read())
 
-    result: dict = {"baseline": _baseline.predict(gray)}
+    # The two models are traced separately so their inference cost and their
+    # live agreement rate are both measurable. See app/telemetry.py.
+    with telemetry.span("inspect.baseline") as baseline_span:
+        baseline_result = _baseline.predict(gray)
+        telemetry.set_attributes(
+            baseline_span,
+            **{
+                "inspect.label": baseline_result.get("label"),
+                "inspect.confidence": float(baseline_result.get("confidence", 0.0)),
+            },
+        )
+
+    result: dict = {"baseline": baseline_result}
 
     if _deep and _deep.loaded:
-        pred = _deep.predict(gray)
+        with telemetry.span("inspect.deep") as deep_span:
+            pred = _deep.predict(gray)
+            telemetry.set_attributes(
+                deep_span,
+                **{
+                    "inspect.label": pred.label,
+                    "inspect.confidence": float(pred.confidence),
+                    # Disagreement between a 97.1% model and a 99.6% model is
+                    # the cheapest available signal for images worth a human
+                    # look -- and for drift, if the rate starts climbing.
+                    "inspect.agrees_with_baseline":
+                        pred.label == baseline_result.get("label"),
+                },
+            )
         result["deep"] = {
             "label": pred.label,
             "confidence": pred.confidence,

@@ -1,0 +1,27 @@
+name: CD
+
+# Deployment policy lives in the platform repo, not here. See
+# SelenaG4/smart-factory-platform/.github/workflows/deploy-service.yml
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to Azure
+    uses: SelenaG4/smart-factory-platform/.github/workflows/deploy-service.yml@main
+    permissions:
+      id-token: write
+      contents: read
+    with:
+      service-name: defect
+      app-name: smartfactory-defect
+      resource-group: rg-smart-factory
+      with-telemetry: true
+    secrets: inherit

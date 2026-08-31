@@ -1,0 +1,11 @@
+# OpenTelemetry tracing + the Azure Monitor exporter.
+#
+# Kept OUT of requirements.txt on purpose. The service runs identically without
+# these (app/telemetry.py degrades to a no-op), so the Render deployment and a
+# plain `docker run` stay light and carry no Azure SDK they will never call.
+# The Azure image opts in with `--build-arg WITH_TELEMETRY=true`, which the
+# platform's CD workflow sets. Roughly 7.6 MB of wheels, ~35 MB installed.
+opentelemetry-api==1.44.0
+opentelemetry-sdk==1.44.0
+opentelemetry-instrumentation-fastapi==0.65b0
+azure-monitor-opentelemetry-exporter==1.0.0b45
